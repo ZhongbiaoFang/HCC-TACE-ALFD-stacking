@@ -96,35 +96,39 @@ if st.button("Predict"):
     st.image("prediction_text.png")
 
     # 计算 SHAP 值（使用标准化后的数据）
-    explainer = shap.Explainer(model, features_scaled)
     features_df_scaled = pd.DataFrame(features_scaled, columns=feature_ranges.keys())
-    shap_values = explainer(features_df_scaled)
+    
+    # 为堆叠模型创建一个可调用的预测函数
+    def model_predict(X):
+        if hasattr(model, 'predict_proba'):
+            return model.predict_proba(X)
+        else:
+            return model.predict(X)
+    
+    # 使用KernelExplainer处理堆叠模型
+    # 创建背景数据集（使用训练数据的样本）
+    background = shap.sample(features_df_scaled, min(100, len(features_df_scaled)))
+    explainer = shap.KernelExplainer(model_predict, background)
+    shap_values = explainer.shap_values(features_df_scaled)
 
     # 生成 SHAP 力图
     class_index = predicted_class  # 当前预测类别
     
-    # 处理新版SHAP的Explanation对象
-    if hasattr(shap_values, 'values'):
-        # 新版SHAP返回Explanation对象
-        if len(shap_values.values.shape) == 3:
-            # 多分类情况
-            shap_values_for_class = shap_values.values[0, :, class_index]
+    # 处理KernelExplainer返回的SHAP值
+    if isinstance(shap_values, list):
+        # 多分类情况，选择对应类别的SHAP值
+        if len(shap_values) > class_index:
+            shap_values_for_class = shap_values[class_index][0]  # 取第一个样本
         else:
-            # 二分类情况
-            shap_values_for_class = shap_values.values[0]
-        expected_value = shap_values.base_values[0] if hasattr(shap_values, 'base_values') else 0
+            shap_values_for_class = shap_values[0][0]  # 如果索引超出范围，使用第一个类别
+        expected_value = explainer.expected_value[class_index] if len(explainer.expected_value) > class_index else explainer.expected_value[0]
     else:
-        # 兼容旧版格式
-        if isinstance(shap_values, list):
-            shap_values_for_class = shap_values[class_index]
-            expected_value = explainer.expected_value[class_index]
+        # 二分类或单一数组情况
+        if len(shap_values.shape) > 1:
+            shap_values_for_class = shap_values[0]  # 取第一个样本
         else:
-            if len(shap_values.shape) == 3:
-                shap_values_for_class = shap_values[0, :, class_index]
-                expected_value = explainer.expected_value[class_index]
-            else:
-                shap_values_for_class = shap_values[0]
-                expected_value = explainer.expected_value
+            shap_values_for_class = shap_values
+        expected_value = explainer.expected_value if hasattr(explainer, 'expected_value') else 0
     
     # 为了可读性，在SHAP图中显示原始特征值
     features_df_original = pd.DataFrame([feature_values], columns=feature_ranges.keys())
