@@ -159,38 +159,26 @@ if st.button("Predict"):
         shap_vals = shap_values_array
         
         
-        # 方法1：使用SHAP原生力图
-        st.subheader("📊 SHAP Force Plot (Original Style)")
+        # 生成SHAP力图并保存为图片
+        plt.figure(figsize=(14, 4), dpi=150)
         
-        # 准备SHAP原生力图数据
-        # 需要创建shap.Explanation对象
-        explanation = shap.Explanation(
-            values=shap_values_array,
-            base_values=expected_value,
-            data=feature_vals,
-            feature_names=feature_names
-        )
-        
-        # 生成SHAP力图并保存为HTML
-        force_plot = shap.force_plot(
+        # 使用matplotlib版本的force plot
+        shap.force_plot(
             base_value=expected_value,
             shap_values=shap_values_array,
             features=feature_vals,
             feature_names=feature_names,
-            out_names="Decompensation Risk",
-            matplotlib=False  # 使用HTML版本
+            matplotlib=True,
+            show=False
         )
         
-        # 将SHAP力图保存为HTML文件并显示
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False) as f:
-            shap.save_html(f.name, force_plot)
-            html_file = f.name
+        # 保存为图片文件
+        plt.tight_layout()
+        plt.savefig("shap_force_plot.png", bbox_inches='tight', dpi=150, facecolor='white')
+        plt.close()
         
-        # 读取并显示HTML
-        with open(html_file, 'r', encoding='utf-8') as f:
-            html_content = f.read()
-        
-        st.components.v1.html(html_content, height=300, scrolling=True)
+        # 在Streamlit中显示图片
+        st.image("shap_force_plot.png", use_column_width=True)
         
         
     except Exception as e:
