@@ -202,27 +202,27 @@ if st.button("Predict"):
         
         # 添加起始和结束标记
         ax.axvline(x=expected_value, color='gray', linestyle='--', alpha=0.7)
-        ax.text(expected_value, base_y - 0.4, f'基准值\n{expected_value:.3f}', 
+        ax.text(expected_value, base_y - 0.4, f'Base Value\n{expected_value:.3f}', 
                ha='center', va='top', fontsize=9,
                bbox=dict(boxstyle="round,pad=0.3", facecolor='lightgray', alpha=0.8))
         
         ax.axvline(x=cumulative[-1], color='black', linestyle='-', linewidth=2)
-        ax.text(cumulative[-1], base_y - 0.4, f'预测值\n{cumulative[-1]:.3f}', 
+        ax.text(cumulative[-1], base_y - 0.4, f'Prediction\n{cumulative[-1]:.3f}', 
                ha='center', va='top', fontsize=9, fontweight='bold',
                bbox=dict(boxstyle="round,pad=0.3", facecolor='yellow', alpha=0.8))
         
         # 设置图表属性
         ax.set_ylim(-0.6, 1.1)
-        ax.set_xlabel('模型输出值', fontsize=12)
-        ax.set_title(f'SHAP力图 - 特征对预测的贡献 (预测类别: {predicted_class})', fontsize=14, fontweight='bold')
+        ax.set_xlabel('Model Output Value', fontsize=12)
+        ax.set_title(f'SHAP Force Plot - Feature Contributions to Prediction (Predicted Class: {predicted_class})', fontsize=14, fontweight='bold')
         ax.grid(True, alpha=0.3, axis='x')
         ax.set_yticks([])
         
         # 添加图例
         from matplotlib.patches import Patch
         legend_elements = [
-            Patch(facecolor='#ff6b6b', alpha=0.8, label='正面影响 (增加预测值)'),
-            Patch(facecolor='#4ecdc4', alpha=0.8, label='负面影响 (降低预测值)')
+            Patch(facecolor='#ff6b6b', alpha=0.8, label='Positive Impact (Increases Prediction)'),
+            Patch(facecolor='#4ecdc4', alpha=0.8, label='Negative Impact (Decreases Prediction)')
         ]
         ax.legend(handles=legend_elements, loc='upper right', bbox_to_anchor=(1, 1))
         
@@ -232,8 +232,8 @@ if st.button("Predict"):
         st.image("shap_force_plot.png")
         
     except Exception as e:
-        st.error(f"SHAP力图生成失败: {str(e)}")
-        st.info("使用备用的SHAP特征重要性图表")
+        st.error(f"SHAP force plot generation failed: {str(e)}")
+        st.info("Using backup SHAP feature importance chart")
         
         # 备用方案：生成SHAP特征重要性条形图
         try:
@@ -255,8 +255,8 @@ if st.button("Predict"):
             
             plt.barh(range(len(features)), values, color=colors, alpha=0.7)
             plt.yticks(range(len(features)), features)
-            plt.xlabel('SHAP值 (特征对预测的影响)')
-            plt.title('特征对预测结果的影响 (SHAP分析)')
+            plt.xlabel('SHAP Value (Feature Impact on Prediction)')
+            plt.title('Feature Impact on Prediction Results (SHAP Analysis)')
             plt.grid(axis='x', alpha=0.3)
             
             # 添加数值标签
@@ -270,7 +270,7 @@ if st.button("Predict"):
             st.image("shap_bar_plot.png")
             
         except Exception as e2:
-            st.error(f"备用SHAP图表也生成失败: {str(e2)}")
+            st.error(f"Backup SHAP chart generation also failed: {str(e2)}")
             st.write("SHAP值:", shap_values_for_class)
     
     # # 清理临时文件
