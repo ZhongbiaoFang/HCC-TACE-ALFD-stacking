@@ -7,6 +7,7 @@ matplotlib==3.8.0
 scikit-learn==1.5.1
 '''
 import streamlit as st
+import streamlit.components.v1
 import joblib
 import numpy as np
 print(np.__version__)
@@ -14,6 +15,8 @@ import pandas as pd
 print(pd.__version__)
 import shap
 import matplotlib.pyplot as plt
+import tempfile
+import os
 
 # 加载保存的随机森林模型
 model = joblib.load('GNB_RF【final_model】.pkl')
@@ -176,35 +179,63 @@ if st.button("Predict"):
         st.write(f"主力图 - 基准值: {expected_value}")
         st.write(f"主力图 - 预测值: {expected_value + np.sum(shap_vals)}")
         
-        # 创建标准SHAP力图样式
-        fig, ax = plt.subplots(figsize=(16, 3))
+        # 方法1：使用SHAP原生力图
+        st.subheader("📊 SHAP Force Plot (Original Style)")
         
-        # 计算累积SHAP值
-        cumulative = [expected_value]
-        for shap_val in shap_vals:
-            cumulative.append(cumulative[-1] + shap_val)
+        # 准备SHAP原生力图数据
+        # 需要创建shap.Explanation对象
+        explanation = shap.Explanation(
+            values=shap_values_array,
+            base_values=expected_value,
+            data=feature_vals,
+            feature_names=feature_names
+        )
+        
+        # 生成SHAP力图并保存为HTML
+        force_plot = shap.force_plot(
+            base_value=expected_value,
+            shap_values=shap_values_array,
+            features=feature_vals,
+            feature_names=feature_names,
+            out_names="Decompensation Risk",
+            matplotlib=False  # 使用HTML版本
+        )
+        
+        # 将SHAP力图保存为HTML文件并显示
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False) as f:
+            shap.save_html(f.name, force_plot)
+            html_file = f.name
+        
+        # 读取并显示HTML
+        with open(html_file, 'r', encoding='utf-8') as f:
+            html_content = f.read()
+        
+        st.components.v1.html(html_content, height=300, scrolling=True)
+        
+        # 方法2：创建自定义的经典风格力图
+        st.subheader("📈 Custom SHAP Force Plot")
+        
+        # 创建标准SHAP力图样式
+        fig, ax = plt.subplots(figsize=(16, 4))
         
         # 绘制标准的水平瀑布图样式
         y_pos = 0.5
-        bar_height = 0.8
+        bar_height = 0.6
         
         # 从基准值开始累积绘制
         current_x = expected_value
-        
-        # 先打印调试信息，确保SHAP值不为空
-        st.write("调试信息:")
-        st.write(f"特征数量: {len(feature_names)}")
-        st.write(f"SHAP值数量: {len(shap_vals)}")
-        st.write("前5个SHAP值:", shap_vals[:5] if len(shap_vals) > 0 else "无SHAP值")
         
         # 按照SHAP值绝对值排序，确保重要特征优先显示
         feature_importance = list(zip(feature_names, feature_vals, shap_vals))
         feature_importance.sort(key=lambda x: abs(x[2]), reverse=True)
         
-        # 绘制所有特征的贡献（不设置最小阈值）
-        for i, (name, val, shap_val) in enumerate(feature_importance):
+        # 只显示前8个最重要的特征，避免过于拥挤
+        top_features = feature_importance[:8]
+        
+        # 绘制特征贡献
+        for i, (name, val, shap_val) in enumerate(top_features):
             # 选择颜色：正值红色，负值蓝色
-            color = '#ff4757' if shap_val > 0 else '#3742fa'
+            color = '#ff0051' if shap_val > 0 else '#008bfb'
             
             # 计算条形的起始位置
             start_x = current_x
@@ -212,48 +243,48 @@ if st.button("Predict"):
             # 绘制条形（使用带符号的shap_val作为宽度）
             rect = plt.Rectangle((start_x, y_pos - bar_height/2), 
                                shap_val, bar_height,
-                               facecolor=color, alpha=0.7, 
-                               edgecolor='white', linewidth=1)
+                               facecolor=color, alpha=0.8, 
+                               edgecolor='white', linewidth=2)
             ax.add_patch(rect)
             
-            # 只为前10个最重要的特征添加标签，避免拥挤
-            if i < 10:
-                # 添加特征标签（在条形上方）
-                mid_x = start_x + shap_val/2
-                ax.text(mid_x, y_pos + bar_height/2 + 0.05, 
-                       f'{name}\n{val:.2f}', 
-                       ha='center', va='bottom', fontsize=7, 
-                       bbox=dict(boxstyle="round,pad=0.2", facecolor='white', alpha=0.8))
-                
-                # 添加SHAP值标签（在条形下方）
-                ax.text(mid_x, y_pos - bar_height/2 - 0.05, 
-                       f'{shap_val:.3f}', 
-                       ha='center', va='top', fontsize=7, 
-                       color=color, fontweight='bold')
+            # 添加特征标签（在条形上方）
+            mid_x = start_x + shap_val/2
+            ax.text(mid_x, y_pos + bar_height/2 + 0.05, 
+                   f'{name} = {val:.2f}', 
+                   ha='center', va='bottom', fontsize=9, 
+                   bbox=dict(boxstyle="round,pad=0.3", facecolor='white', alpha=0.9, edgecolor=color))
+            
+            # 添加SHAP值标签（在条形中央）
+            ax.text(mid_x, y_pos, 
+                   f'{shap_val:.3f}', 
+                   ha='center', va='center', fontsize=10, 
+                   color='white', fontweight='bold')
             
             # 更新累积位置
             current_x += shap_val
         
-        # 添加顶部的higher/lower标识
-        ax.text(0.02, 0.95, 'higher', transform=ax.transAxes, 
-               fontsize=12, color='#ff4757', fontweight='bold', ha='left')
-        ax.text(0.98, 0.95, 'lower', transform=ax.transAxes, 
-               fontsize=12, color='#3742fa', fontweight='bold', ha='right')
+        # 添加顶部的higher/lower标识箭头
+        ax.annotate('higher', xy=(0.02, 0.85), xycoords='axes fraction',
+                   fontsize=14, color='#ff0051', fontweight='bold', ha='left',
+                   arrowprops=dict(arrowstyle='->', color='#ff0051', lw=2))
+        ax.annotate('lower', xy=(0.98, 0.85), xycoords='axes fraction',
+                   fontsize=14, color='#008bfb', fontweight='bold', ha='right',
+                   arrowprops=dict(arrowstyle='<-', color='#008bfb', lw=2))
         
         # 添加垂直线标记基准值和最终值
-        ax.axvline(x=expected_value, color='gray', linestyle='--', alpha=0.7, linewidth=2)
-        ax.axvline(x=current_x, color='black', linestyle='-', alpha=0.8, linewidth=2)
+        ax.axvline(x=expected_value, color='gray', linestyle='--', alpha=0.8, linewidth=3)
+        ax.axvline(x=current_x, color='black', linestyle='-', alpha=0.9, linewidth=3)
         
         # 添加base value标识
-        ax.text(expected_value, y_pos - bar_height/2 - 0.2, 'base value', 
-               ha='center', va='top', fontsize=10, color='gray', fontweight='bold')
+        ax.text(expected_value, y_pos - bar_height/2 - 0.15, 'base value', 
+               ha='center', va='top', fontsize=12, color='gray', fontweight='bold',
+               bbox=dict(boxstyle="round,pad=0.2", facecolor='lightgray', alpha=0.8))
         
-        # 添加f(x)预测值标识，应该与实际预测概率一致
-        # 确保显示的是失代偿的概率
+        # 添加f(x)预测值标识
         actual_decompensation_prob = predicted_proba[1] * 100
-        ax.text(current_x, y_pos + bar_height/2 + 0.15, f'f(x)\n{actual_decompensation_prob:.2f}%', 
-               ha='center', va='bottom', fontsize=12, fontweight='bold',
-               bbox=dict(boxstyle="round,pad=0.3", facecolor='yellow', alpha=0.8))
+        ax.text(current_x, y_pos + bar_height/2 + 0.2, f'f(x)\n{actual_decompensation_prob:.2f}%', 
+               ha='center', va='bottom', fontsize=14, fontweight='bold',
+               bbox=dict(boxstyle="round,pad=0.4", facecolor='yellow', alpha=0.9, edgecolor='orange'))
         
         # 设置图表属性，确保所有内容都能显示
         x_range = abs(current_x - expected_value)
