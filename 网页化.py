@@ -98,9 +98,11 @@ if st.button("Predict"):
     features_df_scaled = pd.DataFrame(features_scaled, columns=feature_ranges.keys())
     
     # 为堆叠模型创建一个可调用的预测函数
+    # 返回失代偿类别（类别1）的概率
     def model_predict(X):
         if hasattr(model, 'predict_proba'):
-            return model.predict_proba(X)
+            proba = model.predict_proba(X)
+            return proba[:, 1]  # 只返回失代偿类别的概率
         else:
             return model.predict(X)
     
@@ -115,34 +117,17 @@ if st.button("Predict"):
     
 
     # 生成 SHAP 力图
-    class_index = predicted_class  # 当前预测类别
+    # 现在预测函数直接返回失代偿概率，SHAP值处理更简单
     
-    # 处理KernelExplainer返回的SHAP值
+    # 处理SHAP值 - 现在应该是单一输出的回归格式
     if isinstance(shap_values, list):
-        # 多分类情况，选择对应类别的SHAP值
-        if len(shap_values) > class_index:
-            shap_values_for_class = shap_values[class_index][0]  # 取第一个样本
-        else:
-            shap_values_for_class = shap_values[0][0]  # 如果索引超出范围，使用第一个类别
-        expected_value = explainer.expected_value[class_index] if len(explainer.expected_value) > class_index else explainer.expected_value[0]
+        # 如果是列表，取第一个元素
+        shap_values_for_class = shap_values[0][0] if isinstance(shap_values[0], np.ndarray) else shap_values[0]
+        expected_value = explainer.expected_value[0] if isinstance(explainer.expected_value, (list, np.ndarray)) else explainer.expected_value
     else:
-        # 处理形状为 (1, n_features, n_classes) 的情况
-        if len(shap_values.shape) == 3:  # (1, n_features, n_classes)
-            shap_values_for_class = shap_values[0, :, class_index] if class_index < shap_values.shape[2] else shap_values[0, :, 0]
-            # 处理expected_value
-            if hasattr(explainer, 'expected_value'):
-                if isinstance(explainer.expected_value, (list, np.ndarray)) and len(explainer.expected_value) > class_index:
-                    expected_value = explainer.expected_value[class_index]
-                elif isinstance(explainer.expected_value, (list, np.ndarray)):
-                    expected_value = explainer.expected_value[0]
-                else:
-                    expected_value = explainer.expected_value
-            else:
-                expected_value = 0
-        else:
-            # 其他情况
-            shap_values_for_class = shap_values[0] if len(shap_values.shape) > 1 else shap_values
-            expected_value = explainer.expected_value if hasattr(explainer, 'expected_value') else 0
+        # 直接使用SHAP值
+        shap_values_for_class = shap_values[0] if len(shap_values.shape) > 1 else shap_values
+        expected_value = explainer.expected_value if hasattr(explainer, 'expected_value') else 0
     
     # 为了可读性，在SHAP图中显示原始特征值
     features_df_original = pd.DataFrame([feature_values], columns=feature_ranges.keys())
@@ -220,8 +205,10 @@ if st.button("Predict"):
         ax.text(expected_value, y_pos - bar_height/2 - 0.2, 'base value', 
                ha='center', va='top', fontsize=10, color='gray', fontweight='bold')
         
-        # 添加f(x)预测值标识
-        ax.text(current_x, y_pos + bar_height/2 + 0.15, f'f(x)\n{current_x:.2f}', 
+        # 添加f(x)预测值标识，应该与实际预测概率一致
+        # 确保显示的是失代偿的概率
+        actual_decompensation_prob = predicted_proba[1] * 100
+        ax.text(current_x, y_pos + bar_height/2 + 0.15, f'f(x)\n{actual_decompensation_prob:.2f}%', 
                ha='center', va='bottom', fontsize=12, fontweight='bold',
                bbox=dict(boxstyle="round,pad=0.3", facecolor='yellow', alpha=0.8))
         
@@ -242,7 +229,7 @@ if st.button("Predict"):
         ax.grid(True, alpha=0.3, axis='x')
         
         # 设置标题
-        ax.set_title(f'SHAP Force Plot (Predicted Class: {predicted_class})', 
+        ax.set_title(f'SHAP Force Plot for Decompensation Risk (Probability: {probability:.2f}%)', 
                     fontsize=14, fontweight='bold', pad=20)
         
         plt.tight_layout()
