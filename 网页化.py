@@ -134,19 +134,69 @@ if st.button("Predict"):
     features_df_original = pd.DataFrame([feature_values], columns=feature_ranges.keys())
     
     # 生成 SHAP 力图
-    plt.figure(figsize=(12, 3))
-    shap.force_plot(
-        expected_value,
-        shap_values_for_class,
-        features_df_original.iloc[0],  # 传递Series而不是DataFrame
-        matplotlib=True,
-        show=False
-    )
-    
-    # 保存并显示 SHAP 图
-    plt.savefig("shap_force_plot.png", bbox_inches='tight', dpi=300)
-    # plt.close()  # 关闭当前图形以释放内存
-    st.image("shap_force_plot.png")
+    try:
+        # 确保数据类型正确
+        expected_value = float(expected_value) if not isinstance(expected_value, (list, np.ndarray)) else expected_value[0] if len(expected_value) > 0 else 0.0
+        
+        # 确保SHAP值是numpy数组
+        shap_values_array = np.array(shap_values_for_class).flatten()
+        
+        # 创建matplotlib图形
+        plt.figure(figsize=(12, 3))
+        
+        # 使用matplotlib模式生成force plot
+        shap.force_plot(
+            expected_value,
+            shap_values_array,
+            features_df_original.iloc[0],
+            matplotlib=True,
+            show=False
+        )
+        
+        # 保存并显示 SHAP 图
+        plt.savefig("shap_force_plot.png", bbox_inches='tight', dpi=300)
+        plt.close()  # 关闭图形以释放内存
+        st.image("shap_force_plot.png")
+        
+    except Exception as e:
+        st.error(f"SHAP力图生成失败: {str(e)}")
+        st.info("使用备用的SHAP特征重要性图表")
+        
+        # 备用方案：生成SHAP特征重要性条形图
+        try:
+            plt.figure(figsize=(10, 6))
+            
+            # 获取特征名称和SHAP值
+            feature_names = list(features_df_original.columns)
+            shap_vals = np.array(shap_values_for_class).flatten()
+            
+            # 创建特征重要性排序
+            importance_data = list(zip(feature_names, shap_vals))
+            importance_data.sort(key=lambda x: abs(x[1]), reverse=True)
+            
+            # 绘制条形图
+            features, values = zip(*importance_data)
+            colors = ['red' if v < 0 else 'blue' for v in values]
+            
+            plt.barh(range(len(features)), values, color=colors, alpha=0.7)
+            plt.yticks(range(len(features)), features)
+            plt.xlabel('SHAP值 (特征对预测的影响)')
+            plt.title('特征对预测结果的影响 (SHAP分析)')
+            plt.grid(axis='x', alpha=0.3)
+            
+            # 添加数值标签
+            for i, v in enumerate(values):
+                plt.text(v + (0.01 if v >= 0 else -0.01), i, f'{v:.3f}', 
+                        va='center', ha='left' if v >= 0 else 'right')
+            
+            plt.tight_layout()
+            plt.savefig("shap_bar_plot.png", bbox_inches='tight', dpi=300)
+            plt.close()
+            st.image("shap_bar_plot.png")
+            
+        except Exception as e2:
+            st.error(f"备用SHAP图表也生成失败: {str(e2)}")
+            st.write("SHAP值:", shap_values_for_class)
     
     # # 清理临时文件
     # import os
