@@ -96,26 +96,35 @@ if st.button("Predict"):
     st.image("prediction_text.png")
 
     # 计算 SHAP 值（使用标准化后的数据）
-    explainer = shap.TreeExplainer(model)
+    explainer = shap.Explainer(model, features_scaled)
     features_df_scaled = pd.DataFrame(features_scaled, columns=feature_ranges.keys())
-    shap_values = explainer.shap_values(features_df_scaled)
+    shap_values = explainer(features_df_scaled)
 
     # 生成 SHAP 力图
     class_index = predicted_class  # 当前预测类别
     
-    # 检查 shap_values 的格式
-    if isinstance(shap_values, list):
-        # 多分类情况，shap_values 是列表
-        shap_values_for_class = shap_values[class_index]
-        expected_value = explainer.expected_value[class_index]
+    # 处理新版SHAP的Explanation对象
+    if hasattr(shap_values, 'values'):
+        # 新版SHAP返回Explanation对象
+        if len(shap_values.values.shape) == 3:
+            # 多分类情况
+            shap_values_for_class = shap_values.values[0, :, class_index]
+        else:
+            # 二分类情况
+            shap_values_for_class = shap_values.values[0]
+        expected_value = shap_values.base_values[0] if hasattr(shap_values, 'base_values') else 0
     else:
-        # 二分类情况，shap_values 是数组
-        if len(shap_values.shape) == 3:
-            shap_values_for_class = shap_values[0, :, class_index]
+        # 兼容旧版格式
+        if isinstance(shap_values, list):
+            shap_values_for_class = shap_values[class_index]
             expected_value = explainer.expected_value[class_index]
         else:
-            shap_values_for_class = shap_values[0]
-            expected_value = explainer.expected_value
+            if len(shap_values.shape) == 3:
+                shap_values_for_class = shap_values[0, :, class_index]
+                expected_value = explainer.expected_value[class_index]
+            else:
+                shap_values_for_class = shap_values[0]
+                expected_value = explainer.expected_value
     
     # 为了可读性，在SHAP图中显示原始特征值
     features_df_original = pd.DataFrame([feature_values], columns=feature_ranges.keys())
