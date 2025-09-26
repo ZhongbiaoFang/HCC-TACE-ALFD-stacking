@@ -147,84 +147,103 @@ if st.button("Predict"):
     # 为了可读性，在SHAP图中显示原始特征值
     features_df_original = pd.DataFrame([feature_values], columns=feature_ranges.keys())
     
-    # 生成 SHAP 力图
+    # 生成标准的 SHAP 力图
     try:
         # 确保数据类型正确
         expected_value = float(expected_value) if not isinstance(expected_value, (list, np.ndarray)) else expected_value[0] if len(expected_value) > 0 else 0.0
         
-        # 确保SHAP值是numpy数组（不flatten，保持原始特征维度）
-        shap_values_array = np.array(shap_values_for_class)
-        
-        # 使用自定义方法创建带颜色的SHAP力图
-        fig, ax = plt.subplots(figsize=(14, 4))
+        # 确保SHAP值是numpy数组
+        shap_values_array = np.array(shap_values_for_class).flatten()
         
         # 获取特征名称和值
         feature_names = list(feature_ranges.keys())
         feature_vals = features_df_original.iloc[0].values
-        shap_vals = shap_values_array.flatten()
+        shap_vals = shap_values_array
         
-        # 计算累积位置
+        # 创建标准SHAP力图样式
+        fig, ax = plt.subplots(figsize=(16, 3))
+        
+        # 计算累积SHAP值
         cumulative = [expected_value]
-        for i in range(len(shap_vals)):
-            cumulative.append(cumulative[-1] + shap_vals[i])
+        for shap_val in shap_vals:
+            cumulative.append(cumulative[-1] + shap_val)
         
-        # 绘制基线
-        base_y = 0.5
-        ax.plot([expected_value, cumulative[-1]], [base_y, base_y], 'k-', linewidth=2, alpha=0.7)
+        # 绘制标准的水平瀑布图样式
+        y_pos = 0.5
+        bar_height = 0.8
         
-        # 绘制每个特征的贡献
-        current_pos = expected_value
+        # 从基准值开始累积绘制
+        current_x = expected_value
+        
+        # 按照原始顺序绘制所有特征的贡献
         for i, (name, val, shap_val) in enumerate(zip(feature_names, feature_vals, shap_vals)):
-            # 确定颜色：正值用红色，负值用蓝色
-            color = '#ff6b6b' if shap_val > 0 else '#4ecdc4'  # 红色为正面影响，青色为负面影响
-            
-            # 绘制箭头
             if abs(shap_val) > 0.001:  # 只显示有意义的贡献
-                # 绘制矩形表示贡献大小
-                rect_height = 0.15
-                rect = plt.Rectangle((current_pos, base_y - rect_height/2), 
-                                   shap_val, rect_height, 
-                                   facecolor=color, alpha=0.8, edgecolor='black', linewidth=1)
+                # 选择颜色：正值红色，负值蓝色
+                color = '#ff4757' if shap_val > 0 else '#3742fa'
+                
+                # 计算条形的起始位置和宽度
+                width = abs(shap_val)
+                start_x = current_x
+                
+                # 绘制条形
+                rect = plt.Rectangle((start_x, y_pos - bar_height/2), 
+                                   shap_val, bar_height,  # 使用带符号的shap_val作为宽度
+                                   facecolor=color, alpha=0.9, 
+                                   edgecolor='white', linewidth=2)
                 ax.add_patch(rect)
                 
-                # 添加特征标签
-                mid_pos = current_pos + shap_val/2
-                ax.text(mid_pos, base_y + 0.25, f'{name}\n{val:.2f}', 
-                       ha='center', va='bottom', fontsize=9, 
-                       bbox=dict(boxstyle="round,pad=0.3", facecolor='white', alpha=0.8))
+                # 添加特征标签（在条形上方）
+                mid_x = start_x + shap_val/2
+                ax.text(mid_x, y_pos + bar_height/2 + 0.05, f'{name} = {val:.3f}', 
+                       ha='center', va='bottom', fontsize=8, 
+                       bbox=dict(boxstyle="round,pad=0.2", facecolor='white', alpha=0.8))
                 
-                # 添加SHAP值标签
-                ax.text(mid_pos, base_y - 0.25, f'{shap_val:.3f}', 
+                # 添加SHAP值标签（在条形下方）
+                ax.text(mid_x, y_pos - bar_height/2 - 0.05, f'{shap_val:.3f}', 
                        ha='center', va='top', fontsize=8, 
-                       color='darkred' if shap_val > 0 else 'darkblue', fontweight='bold')
-            
-            current_pos += shap_val
+                       color=color, fontweight='bold')
+                
+                # 更新累积位置
+                current_x += shap_val
         
-        # 添加起始和结束标记
-        ax.axvline(x=expected_value, color='gray', linestyle='--', alpha=0.7)
-        ax.text(expected_value, base_y - 0.4, f'Base Value\n{expected_value:.3f}', 
-               ha='center', va='top', fontsize=9,
-               bbox=dict(boxstyle="round,pad=0.3", facecolor='lightgray', alpha=0.8))
+        # 添加顶部的higher/lower标识
+        ax.text(0.02, 0.95, 'higher', transform=ax.transAxes, 
+               fontsize=12, color='#ff4757', fontweight='bold', ha='left')
+        ax.text(0.98, 0.95, 'lower', transform=ax.transAxes, 
+               fontsize=12, color='#3742fa', fontweight='bold', ha='right')
         
-        ax.axvline(x=cumulative[-1], color='black', linestyle='-', linewidth=2)
-        ax.text(cumulative[-1], base_y - 0.4, f'Prediction\n{cumulative[-1]:.3f}', 
-               ha='center', va='top', fontsize=9, fontweight='bold',
+        # 添加垂直线标记基准值和最终值
+        ax.axvline(x=expected_value, color='gray', linestyle='--', alpha=0.7, linewidth=2)
+        ax.axvline(x=current_x, color='black', linestyle='-', alpha=0.8, linewidth=2)
+        
+        # 添加base value标识
+        ax.text(expected_value, y_pos - bar_height/2 - 0.2, 'base value', 
+               ha='center', va='top', fontsize=10, color='gray', fontweight='bold')
+        
+        # 添加f(x)预测值标识
+        ax.text(current_x, y_pos + bar_height/2 + 0.15, f'f(x)\n{current_x:.2f}', 
+               ha='center', va='bottom', fontsize=12, fontweight='bold',
                bbox=dict(boxstyle="round,pad=0.3", facecolor='yellow', alpha=0.8))
         
         # 设置图表属性
-        ax.set_ylim(-0.6, 1.1)
-        ax.set_xlabel('Model Output Value', fontsize=12)
-        ax.set_title(f'SHAP Force Plot - Feature Contributions to Prediction (Predicted Class: {predicted_class})', fontsize=14, fontweight='bold')
-        ax.grid(True, alpha=0.3, axis='x')
-        ax.set_yticks([])
+        x_min = min(expected_value, current_x) - 0.15
+        x_max = max(expected_value, current_x) + 0.15
+        ax.set_xlim(x_min, x_max)
+        ax.set_ylim(-0.1, 1.2)
         
-        # 添加图例
-        from matplotlib.patches import Patch
-        legend_elements = [
-            Patch(facecolor='#ff6b6b', alpha=0.8, label='Positive Impact (Increases Prediction)'),
-            Patch(facecolor='#4ecdc4', alpha=0.8, label='Negative Impact (Decreases Prediction)')
-        ]
-        ax.legend(handles=legend_elements, loc='upper right', bbox_to_anchor=(1, 1))
+        # 移除y轴刻度和标签
+        ax.set_yticks([])
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['left'].set_visible(False)
+        
+        # 设置x轴
+        ax.set_xlabel('Model Output Value', fontsize=12)
+        ax.grid(True, alpha=0.3, axis='x')
+        
+        # 设置标题
+        ax.set_title(f'SHAP Force Plot (Predicted Class: {predicted_class})', 
+                    fontsize=14, fontweight='bold', pad=20)
         
         plt.tight_layout()
         plt.savefig("shap_force_plot.png", bbox_inches='tight', dpi=300, facecolor='white')
