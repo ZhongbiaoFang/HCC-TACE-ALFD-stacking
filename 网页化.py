@@ -160,36 +160,48 @@ if st.button("Predict"):
         # 从基准值开始累积绘制
         current_x = expected_value
         
-        # 按照原始顺序绘制所有特征的贡献
-        for i, (name, val, shap_val) in enumerate(zip(feature_names, feature_vals, shap_vals)):
-            if abs(shap_val) > 0.001:  # 只显示有意义的贡献
-                # 选择颜色：正值红色，负值蓝色
-                color = '#ff4757' if shap_val > 0 else '#3742fa'
-                
-                # 计算条形的起始位置和宽度
-                width = abs(shap_val)
-                start_x = current_x
-                
-                # 绘制条形
-                rect = plt.Rectangle((start_x, y_pos - bar_height/2), 
-                                   shap_val, bar_height,  # 使用带符号的shap_val作为宽度
-                                   facecolor=color, alpha=0.9, 
-                                   edgecolor='white', linewidth=2)
-                ax.add_patch(rect)
-                
+        # 先打印调试信息，确保SHAP值不为空
+        st.write("调试信息:")
+        st.write(f"特征数量: {len(feature_names)}")
+        st.write(f"SHAP值数量: {len(shap_vals)}")
+        st.write("前5个SHAP值:", shap_vals[:5] if len(shap_vals) > 0 else "无SHAP值")
+        
+        # 按照SHAP值绝对值排序，确保重要特征优先显示
+        feature_importance = list(zip(feature_names, feature_vals, shap_vals))
+        feature_importance.sort(key=lambda x: abs(x[2]), reverse=True)
+        
+        # 绘制所有特征的贡献（不设置最小阈值）
+        for i, (name, val, shap_val) in enumerate(feature_importance):
+            # 选择颜色：正值红色，负值蓝色
+            color = '#ff4757' if shap_val > 0 else '#3742fa'
+            
+            # 计算条形的起始位置
+            start_x = current_x
+            
+            # 绘制条形（使用带符号的shap_val作为宽度）
+            rect = plt.Rectangle((start_x, y_pos - bar_height/2), 
+                               shap_val, bar_height,
+                               facecolor=color, alpha=0.7, 
+                               edgecolor='white', linewidth=1)
+            ax.add_patch(rect)
+            
+            # 只为前10个最重要的特征添加标签，避免拥挤
+            if i < 10:
                 # 添加特征标签（在条形上方）
                 mid_x = start_x + shap_val/2
-                ax.text(mid_x, y_pos + bar_height/2 + 0.05, f'{name} = {val:.3f}', 
-                       ha='center', va='bottom', fontsize=8, 
+                ax.text(mid_x, y_pos + bar_height/2 + 0.05, 
+                       f'{name}\n{val:.2f}', 
+                       ha='center', va='bottom', fontsize=7, 
                        bbox=dict(boxstyle="round,pad=0.2", facecolor='white', alpha=0.8))
                 
                 # 添加SHAP值标签（在条形下方）
-                ax.text(mid_x, y_pos - bar_height/2 - 0.05, f'{shap_val:.3f}', 
-                       ha='center', va='top', fontsize=8, 
+                ax.text(mid_x, y_pos - bar_height/2 - 0.05, 
+                       f'{shap_val:.3f}', 
+                       ha='center', va='top', fontsize=7, 
                        color=color, fontweight='bold')
-                
-                # 更新累积位置
-                current_x += shap_val
+            
+            # 更新累积位置
+            current_x += shap_val
         
         # 添加顶部的higher/lower标识
         ax.text(0.02, 0.95, 'higher', transform=ax.transAxes, 
@@ -212,9 +224,11 @@ if st.button("Predict"):
                ha='center', va='bottom', fontsize=12, fontweight='bold',
                bbox=dict(boxstyle="round,pad=0.3", facecolor='yellow', alpha=0.8))
         
-        # 设置图表属性
-        x_min = min(expected_value, current_x) - 0.15
-        x_max = max(expected_value, current_x) + 0.15
+        # 设置图表属性，确保所有内容都能显示
+        x_range = abs(current_x - expected_value)
+        margin = max(0.02, x_range * 0.1)  # 动态边距
+        x_min = min(expected_value, current_x) - margin
+        x_max = max(expected_value, current_x) + margin
         ax.set_xlim(x_min, x_max)
         ax.set_ylim(-0.1, 1.2)
         
