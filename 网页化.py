@@ -5,7 +5,6 @@ numpy==1.26.4
 pandas==2.2.2
 matplotlib==3.8.0
 scikit-learn==1.5.1
-shap==0.45.1
 '''
 import streamlit as st
 import joblib
@@ -156,21 +155,80 @@ if st.button("Predict"):
         # 确保SHAP值是numpy数组（不flatten，保持原始特征维度）
         shap_values_array = np.array(shap_values_for_class)
         
-        # 创建matplotlib图形
-        plt.figure(figsize=(12, 3))
+        # 使用自定义方法创建带颜色的SHAP力图
+        fig, ax = plt.subplots(figsize=(14, 4))
         
-        # 使用matplotlib模式生成force plot，使用原始特征值进行展示
-        shap.force_plot(
-            expected_value,
-            shap_values_array,
-            features_df_original.iloc[0],
-            matplotlib=True,
-            show=False
-        )
+        # 获取特征名称和值
+        feature_names = list(feature_ranges.keys())
+        feature_vals = features_df_original.iloc[0].values
+        shap_vals = shap_values_array.flatten()
         
-        # 保存并显示 SHAP 图
-        plt.savefig("shap_force_plot.png", bbox_inches='tight', dpi=300)
-        plt.close()  # 关闭图形以释放内存
+        # 计算累积位置
+        cumulative = [expected_value]
+        for i in range(len(shap_vals)):
+            cumulative.append(cumulative[-1] + shap_vals[i])
+        
+        # 绘制基线
+        base_y = 0.5
+        ax.plot([expected_value, cumulative[-1]], [base_y, base_y], 'k-', linewidth=2, alpha=0.7)
+        
+        # 绘制每个特征的贡献
+        current_pos = expected_value
+        for i, (name, val, shap_val) in enumerate(zip(feature_names, feature_vals, shap_vals)):
+            # 确定颜色：正值用红色，负值用蓝色
+            color = '#ff6b6b' if shap_val > 0 else '#4ecdc4'  # 红色为正面影响，青色为负面影响
+            
+            # 绘制箭头
+            if abs(shap_val) > 0.001:  # 只显示有意义的贡献
+                # 绘制矩形表示贡献大小
+                rect_height = 0.15
+                rect = plt.Rectangle((current_pos, base_y - rect_height/2), 
+                                   shap_val, rect_height, 
+                                   facecolor=color, alpha=0.8, edgecolor='black', linewidth=1)
+                ax.add_patch(rect)
+                
+                # 添加特征标签
+                mid_pos = current_pos + shap_val/2
+                ax.text(mid_pos, base_y + 0.25, f'{name}\n{val:.2f}', 
+                       ha='center', va='bottom', fontsize=9, 
+                       bbox=dict(boxstyle="round,pad=0.3", facecolor='white', alpha=0.8))
+                
+                # 添加SHAP值标签
+                ax.text(mid_pos, base_y - 0.25, f'{shap_val:.3f}', 
+                       ha='center', va='top', fontsize=8, 
+                       color='darkred' if shap_val > 0 else 'darkblue', fontweight='bold')
+            
+            current_pos += shap_val
+        
+        # 添加起始和结束标记
+        ax.axvline(x=expected_value, color='gray', linestyle='--', alpha=0.7)
+        ax.text(expected_value, base_y - 0.4, f'基准值\n{expected_value:.3f}', 
+               ha='center', va='top', fontsize=9,
+               bbox=dict(boxstyle="round,pad=0.3", facecolor='lightgray', alpha=0.8))
+        
+        ax.axvline(x=cumulative[-1], color='black', linestyle='-', linewidth=2)
+        ax.text(cumulative[-1], base_y - 0.4, f'预测值\n{cumulative[-1]:.3f}', 
+               ha='center', va='top', fontsize=9, fontweight='bold',
+               bbox=dict(boxstyle="round,pad=0.3", facecolor='yellow', alpha=0.8))
+        
+        # 设置图表属性
+        ax.set_ylim(-0.6, 1.1)
+        ax.set_xlabel('模型输出值', fontsize=12)
+        ax.set_title(f'SHAP力图 - 特征对预测的贡献 (预测类别: {predicted_class})', fontsize=14, fontweight='bold')
+        ax.grid(True, alpha=0.3, axis='x')
+        ax.set_yticks([])
+        
+        # 添加图例
+        from matplotlib.patches import Patch
+        legend_elements = [
+            Patch(facecolor='#ff6b6b', alpha=0.8, label='正面影响 (增加预测值)'),
+            Patch(facecolor='#4ecdc4', alpha=0.8, label='负面影响 (降低预测值)')
+        ]
+        ax.legend(handles=legend_elements, loc='upper right', bbox_to_anchor=(1, 1))
+        
+        plt.tight_layout()
+        plt.savefig("shap_force_plot.png", bbox_inches='tight', dpi=300, facecolor='white')
+        plt.close()
         st.image("shap_force_plot.png")
         
     except Exception as e:
