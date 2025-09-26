@@ -114,16 +114,6 @@ if st.button("Predict"):
     current_sample = features_df_scaled.iloc[[0]]  # 保持DataFrame格式
     shap_values = explainer.shap_values(current_sample)
     
-    # 调试信息
-    st.write("SHAP计算详情：")
-    st.write(f"- 输入样本形状: {current_sample.shape}")
-    st.write(f"- 特征列名: {list(current_sample.columns)}")
-    st.write(f"- SHAP values类型: {type(shap_values)}")
-    if isinstance(shap_values, list):
-        st.write(f"- SHAP values长度（类别数）: {len(shap_values)}")
-        st.write(f"- 每个类别的SHAP值形状: {[np.array(sv).shape for sv in shap_values]}")
-    else:
-        st.write(f"- SHAP values形状: {np.array(shap_values).shape}")
 
     # 生成 SHAP 力图
     class_index = predicted_class  # 当前预测类别
@@ -137,51 +127,43 @@ if st.button("Predict"):
             shap_values_for_class = shap_values[0][0]  # 如果索引超出范围，使用第一个类别
         expected_value = explainer.expected_value[class_index] if len(explainer.expected_value) > class_index else explainer.expected_value[0]
     else:
-        # 二分类或单一数组情况
-        if len(shap_values.shape) > 1:
-            shap_values_for_class = shap_values[0]  # 取第一个样本
+        # 处理形状为 (1, n_features, n_classes) 的情况
+        if len(shap_values.shape) == 3:  # (1, n_features, n_classes)
+            shap_values_for_class = shap_values[0, :, class_index] if class_index < shap_values.shape[2] else shap_values[0, :, 0]
+            # 处理expected_value
+            if hasattr(explainer, 'expected_value'):
+                if isinstance(explainer.expected_value, (list, np.ndarray)) and len(explainer.expected_value) > class_index:
+                    expected_value = explainer.expected_value[class_index]
+                elif isinstance(explainer.expected_value, (list, np.ndarray)):
+                    expected_value = explainer.expected_value[0]
+                else:
+                    expected_value = explainer.expected_value
+            else:
+                expected_value = 0
         else:
-            shap_values_for_class = shap_values
-        expected_value = explainer.expected_value if hasattr(explainer, 'expected_value') else 0
+            # 其他情况
+            shap_values_for_class = shap_values[0] if len(shap_values.shape) > 1 else shap_values
+            expected_value = explainer.expected_value if hasattr(explainer, 'expected_value') else 0
     
     # 为了可读性，在SHAP图中显示原始特征值
     features_df_original = pd.DataFrame([feature_values], columns=feature_ranges.keys())
     
     # 生成 SHAP 力图
     try:
-        # 调试信息：检查维度匹配
-        st.write(f"调试信息：")
-        st.write(f"- 特征数量: {len(feature_ranges.keys())}")
-        st.write(f"- SHAP值形状: {np.array(shap_values_for_class).shape}")
-        st.write(f"- features_df_scaled形状: {features_df_scaled.shape}")
-        
         # 确保数据类型正确
         expected_value = float(expected_value) if not isinstance(expected_value, (list, np.ndarray)) else expected_value[0] if len(expected_value) > 0 else 0.0
         
-        # 确保SHAP值是numpy数组
-        shap_values_array = np.array(shap_values_for_class).flatten()
-        
-        # 检查维度匹配
-        if len(shap_values_array) != len(feature_ranges.keys()):
-            st.error(f"维度不匹配：SHAP值长度({len(shap_values_array)}) != 特征数量({len(feature_ranges.keys())})")
-            # 如果维度不匹配，尝试使用缩放后的特征
-            feature_data_for_plot = features_df_scaled.iloc[0]
-        else:
-            # 维度匹配，使用原始特征值
-            feature_data_for_plot = features_df_original.iloc[0]
-        
-        # 再次检查维度
-        if len(shap_values_array) != len(feature_data_for_plot):
-            raise ValueError(f"无法匹配维度：SHAP值({len(shap_values_array)}) vs 特征({len(feature_data_for_plot)})")
+        # 确保SHAP值是numpy数组（不flatten，保持原始特征维度）
+        shap_values_array = np.array(shap_values_for_class)
         
         # 创建matplotlib图形
         plt.figure(figsize=(12, 3))
         
-        # 使用matplotlib模式生成force plot
+        # 使用matplotlib模式生成force plot，使用原始特征值进行展示
         shap.force_plot(
             expected_value,
             shap_values_array,
-            feature_data_for_plot,
+            features_df_original.iloc[0],
             matplotlib=True,
             show=False
         )
@@ -202,13 +184,8 @@ if st.button("Predict"):
             # 获取特征名称和SHAP值
             shap_vals = np.array(shap_values_for_class).flatten()
             
-            # 根据SHAP值的维度选择正确的特征名称
-            if len(shap_vals) == len(feature_ranges.keys()):
-                feature_names = list(feature_ranges.keys())
-            else:
-                # 如果维度不匹配，使用通用名称
-                feature_names = [f"特征_{i+1}" for i in range(len(shap_vals))]
-                st.warning(f"特征名称与SHAP值维度不匹配，使用通用名称。SHAP维度：{len(shap_vals)}, 原始特征数：{len(feature_ranges.keys())}")
+            # 使用特征名称
+            feature_names = list(feature_ranges.keys())
             
             # 创建特征重要性排序
             importance_data = list(zip(feature_names, shap_vals))
