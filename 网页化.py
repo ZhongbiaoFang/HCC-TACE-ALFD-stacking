@@ -107,19 +107,30 @@ if st.button("Predict"):
             return model.predict(X)
     
     # 使用KernelExplainer处理堆叠模型
-    # 创建背景数据集 - 使用简单的零向量作为基准
-    background_data = np.zeros((1, len(features_scaled)))  # 创建零向量作为背景
+    # 创建背景数据集 - 使用标准化数据的均值作为基准
+    # 注意：features_scaled是1D数组，需要reshape为2D
+    current_sample_2d = features_scaled.reshape(1, -1)
+    background_data = np.zeros_like(current_sample_2d)  # 创建同样形状的零向量
     
     # 调试信息
     st.write(f"背景数据形状: {background_data.shape}")
-    st.write(f"当前样本形状: {features_scaled.shape}")
-    st.write(f"特征值范例: {features_scaled[:3]}")
+    st.write(f"当前样本2D形状: {current_sample_2d.shape}")
+    st.write(f"特征数量: {current_sample_2d.shape[1]}")
+    
+    # 测试模型预测函数
+    try:
+        test_pred = model_predict(background_data)
+        st.write(f"背景数据预测成功: {test_pred}")
+        test_pred2 = model_predict(current_sample_2d)
+        st.write(f"当前样本预测成功: {test_pred2}")
+    except Exception as e:
+        st.error(f"模型预测测试失败: {e}")
+        st.stop()
     
     explainer = shap.KernelExplainer(model_predict, background_data)
     
     # 计算当前输入样本的SHAP值
-    current_sample_reshaped = features_scaled.reshape(1, -1)  # 确保是2D数组
-    shap_values = explainer.shap_values(current_sample_reshaped, nsamples=100)  # 限制采样数量加快计算
+    shap_values = explainer.shap_values(current_sample_2d, nsamples=100)  # 限制采样数量加快计算
     
 
     # 生成 SHAP 力图
