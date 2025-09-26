@@ -107,27 +107,41 @@ if st.button("Predict"):
             return model.predict(X)
     
     # 使用KernelExplainer处理堆叠模型
-    # 创建背景数据集（使用训练数据的样本）
-    background = shap.sample(features_df_scaled, min(100, len(features_df_scaled)))
-    explainer = shap.KernelExplainer(model_predict, background)
+    # 创建背景数据集 - 使用简单的零向量作为基准
+    background_data = np.zeros((1, len(features_scaled)))  # 创建零向量作为背景
     
-    # 只计算当前输入样本的SHAP值
-    current_sample = features_df_scaled.iloc[[0]]  # 保持DataFrame格式
-    shap_values = explainer.shap_values(current_sample)
+    # 调试信息
+    st.write(f"背景数据形状: {background_data.shape}")
+    st.write(f"当前样本形状: {features_scaled.shape}")
+    st.write(f"特征值范例: {features_scaled[:3]}")
+    
+    explainer = shap.KernelExplainer(model_predict, background_data)
+    
+    # 计算当前输入样本的SHAP值
+    current_sample_reshaped = features_scaled.reshape(1, -1)  # 确保是2D数组
+    shap_values = explainer.shap_values(current_sample_reshaped, nsamples=100)  # 限制采样数量加快计算
     
 
     # 生成 SHAP 力图
     # 现在预测函数直接返回失代偿概率，SHAP值处理更简单
     
     # 处理SHAP值 - 现在应该是单一输出的回归格式
-    if isinstance(shap_values, list):
-        # 如果是列表，取第一个元素
-        shap_values_for_class = shap_values[0][0] if isinstance(shap_values[0], np.ndarray) else shap_values[0]
-        expected_value = explainer.expected_value[0] if isinstance(explainer.expected_value, (list, np.ndarray)) else explainer.expected_value
+    st.write(f"SHAP值类型: {type(shap_values)}")
+    st.write(f"SHAP值形状: {shap_values.shape if hasattr(shap_values, 'shape') else 'N/A'}")
+    st.write(f"Expected value: {explainer.expected_value}")
+    
+    # 正确提取SHAP值
+    if isinstance(shap_values, np.ndarray):
+        if len(shap_values.shape) == 2:
+            shap_values_for_class = shap_values[0]  # 取第一行（第一个样本）
+        else:
+            shap_values_for_class = shap_values
     else:
-        # 直接使用SHAP值
-        shap_values_for_class = shap_values[0] if len(shap_values.shape) > 1 else shap_values
-        expected_value = explainer.expected_value if hasattr(explainer, 'expected_value') else 0
+        shap_values_for_class = shap_values
+    
+    expected_value = explainer.expected_value
+    if isinstance(expected_value, (list, np.ndarray)):
+        expected_value = expected_value[0] if len(expected_value) > 0 else 0
     
     # 为了可读性，在SHAP图中显示原始特征值
     features_df_original = pd.DataFrame([feature_values], columns=feature_ranges.keys())
@@ -144,6 +158,12 @@ if st.button("Predict"):
         feature_names = list(feature_ranges.keys())
         feature_vals = features_df_original.iloc[0].values
         shap_vals = shap_values_array
+        
+        # 主要调试信息
+        st.write(f"主力图 - 提取的SHAP值: {shap_vals}")
+        st.write(f"主力图 - SHAP值总和: {np.sum(shap_vals)}")
+        st.write(f"主力图 - 基准值: {expected_value}")
+        st.write(f"主力图 - 预测值: {expected_value + np.sum(shap_vals)}")
         
         # 创建标准SHAP力图样式
         fig, ax = plt.subplots(figsize=(16, 3))
@@ -261,6 +281,12 @@ if st.button("Predict"):
             
             # 获取特征名称和SHAP值
             shap_vals = np.array(shap_values_for_class).flatten()
+            
+            # 最终调试信息
+            st.write(f"提取的SHAP值: {shap_vals}")
+            st.write(f"SHAP值总和: {np.sum(shap_vals)}")
+            st.write(f"基准值: {expected_value}")
+            st.write(f"预测值: {expected_value + np.sum(shap_vals)}")
             
             # 使用特征名称
             feature_names = list(feature_ranges.keys())
